@@ -1,0 +1,11 @@
+{
+  "name": "hokej-simulator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "simulate": "node src/demo.js",
+    "start": "node src/server.js"
+  }
+}

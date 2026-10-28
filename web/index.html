@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101719" />
+    <title>Hokej | Simulace utkání</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="broadcast">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Hokej, úvodní obrazovka">
+          <span class="brand-mark" aria-hidden="true">H</span>
+          <span class="brand-copy"><strong>HOKEJ</strong><small>SIMULAČNÍ CENTRUM</small></span>
+        </a>
+        <div class="match-state"><span class="live-dot"></span><span id="matchState">ZÁPAS PROBÍHÁ</span></div>
+      </header>
+
+      <section class="scoreboard" aria-label="Stav utkání">
+        <div class="team-score team-home">
+          <span class="team-marker" aria-hidden="true"></span>
+          <div class="team-name"><span>DOMÁCÍ</span><strong>Sever</strong></div>
+          <strong class="score" id="homeScore">0</strong>
+        </div>
+        <div class="game-clock">
+          <span class="period-label">1. TŘETINA</span>
+          <time id="gameClock">20:00</time>
+          <span class="period-subtitle">SIMULOVANÝ ZÁPAS</span>
+        </div>
+        <div class="team-score team-away">
+          <strong class="score" id="awayScore">0</strong>
+          <div class="team-name"><span>HOSTÉ</span><strong>Havraní</strong></div>
+          <span class="team-marker" aria-hidden="true"></span>
+        </div>
+      </section>
+
+      <section class="game-layout" aria-label="Průběh zápasu">
+        <div class="rink-panel">
+          <div class="rink-heading">
+            <div><span class="eyebrow">ŽIVÝ PŘENOS</span><h1>Ledová plocha</h1></div>
+            <div class="rink-legend"><span><i class="legend-home"></i>Sever</span><span><i class="legend-away"></i>Havraní</span></div>
+          </div>
+          <div class="rink-frame">
+            <svg id="rink" class="rink" viewBox="0 0 1000 600" role="img" aria-label="Hokejové kluziště se dvěma týmy hráčů">
+              <defs>
+                <clipPath id="iceBoundary"><rect x="22" y="22" width="956" height="556" rx="136" /></clipPath>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+                  <path d="M0 0 10 5 0 10Z" fill="currentColor" />
+                </marker>
+              </defs>
+              <rect class="ice-shadow" x="12" y="14" width="976" height="572" rx="148" />
+              <rect class="ice" x="22" y="22" width="956" height="556" rx="136" />
+              <g class="rink-markings" clip-path="url(#iceBoundary)">
+                <path class="goal-line" d="M88 22V578 M912 22V578" />
+                <path class="blue-line" d="M338 22V578 M662 22V578" />
+                <path class="center-line" d="M500 22V578" />
+                <circle class="center-circle" cx="500" cy="300" r="76" />
+                <circle class="center-dot" cx="500" cy="300" r="8" />
+                <g class="faceoff-markings">
+                  <circle cx="177" cy="180" r="48" /><circle cx="177" cy="420" r="48" />
+                  <circle cx="823" cy="180" r="48" /><circle cx="823" cy="420" r="48" />
+                  <circle class="faceoff-dot" cx="177" cy="180" r="7" /><circle class="faceoff-dot" cx="177" cy="420" r="7" />
+                  <circle class="faceoff-dot" cx="823" cy="180" r="7" /><circle class="faceoff-dot" cx="823" cy="420" r="7" />
+                  <circle cx="257" cy="300" r="5" /><circle cx="743" cy="300" r="5" />
+                </g>
+                <path class="crease" d="M88 250 A50 50 0 0 1 88 350 Z M912 250 A50 50 0 0 0 912 350 Z" />
+                <path class="goal-frame" d="M49 283V317 M951 283V317" />
+                <path class="goal-net" d="M50 284H67V316H50 M950 284H933V316H950" />
+              </g>
+              <g id="actionLayer" class="action-layer" aria-hidden="true"></g>
+              <g id="playerLayer" class="player-layer" aria-hidden="true"></g>
+              <g id="puckLayer" class="puck-layer" aria-hidden="true"></g>
+            </svg>
+            <div class="rink-caption"><span>SEVER útočí →</span><span>LED • 60 × 100 m</span><span>← HAVRANÍ útočí</span></div>
+          </div>
+          <div class="controls" aria-label="Ovládání simulace">
+            <button class="control-button primary-control" id="playToggle" type="button" title="Pozastavit simulaci" aria-label="Pozastavit simulaci"><span id="playIcon" aria-hidden="true">Ⅱ</span></button>
+            <button class="control-button" id="stepButton" type="button" title="Posunout o jeden krok" aria-label="Posunout o jeden krok"><span aria-hidden="true">›</span></button>
+            <button class="control-button" id="resetButton" type="button" title="Začít nový zápas" aria-label="Začít nový zápas"><span aria-hidden="true">↻</span></button>
+            <span class="control-divider" aria-hidden="true"></span>
+            <label class="speed-control" for="speedSelect"><span>RYCHLOST</span>
+              <select id="speedSelect" aria-label="Rychlost simulace">
+                <option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+              </select>
+            </label>
+            <div class="possession"><span class="possession-dot"></span><span id="possessionText">Vhazování ve středním pásmu</span></div>
+          </div>
+        </div>
+
+        <aside class="match-sidebar">
+          <section class="sidebar-section on-ice-section">
+            <div class="section-heading"><h2>NA LEDĚ</h2><span>5 + 1</span></div>
+            <div class="lineup-team"><span class="lineup-swatch swatch-home"></span><div><strong>Sever</strong><small id="homeCarrier">Střední pásmo</small></div><b>6</b></div>
+            <div class="lineup-team"><span class="lineup-swatch swatch-away"></span><div><strong>Havraní</strong><small id="awayCarrier">Střední pásmo</small></div><b>6</b></div>
+          </section>
+          <section class="sidebar-section feed-section">
+            <div class="section-heading"><h2>DĚNÍ NA LEDĚ</h2><span class="feed-count" id="eventCount">0</span></div>
+            <ol class="event-feed" id="eventFeed" aria-live="polite">
+              <li class="feed-empty">Zápas začíná. Čekáme na první akci.</li>
+            </ol>
+          </section>
+          <footer class="sidebar-footer"><span class="mini-puck" aria-hidden="true"></span><span>ROZHODNUTÍ ŘÍDÍ HERNÍ AGENTI</span></footer>
+        </aside>
+      </section>
+
+      <footer class="page-footer"><span>HOKEJOVÁ SIMULACE 5 × 5 + BRANKÁŘ</span><span>PRAVIDLOVÍ AGENTI · ŽIVÁ SIMULACE</span></footer>
+    </main>
+  </body>
+</html>

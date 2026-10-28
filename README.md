@@ -28,7 +28,8 @@ Vlastní agenti se předávají do `stepGame(game, { agents })`. Agent může b�
 registrovaný podle ID hráče nebo role; dostane neměnný snapshot stavu a hráče a
 vrátí akci. Dostupné akce podle role jsou exportované v `ROLE_ACTIONS`.
 Aktuálně simulace zahrnuje pohyb, přihrávky a jejich zachycení, střely, zákroky,
-napadání, zisky puku a čas utkání. `game.events` obsahuje události posledního kroku.
+napadání, zisky puku, vhazování na středové čáře po gólu a čas utkání.
+`game.events` obsahuje události posledního kroku.
 
 Pro živé grafické rozhraní spusť `npm start`. Zobrazuje kluziště, hráče a puk,
 průběžné skóre, čas, události a ovládání rychlosti simulace.

@@ -1,4 +1,4 @@
-import { createGame, stepGame } from "/hockey.js";
+import { createGame, enforcePlayerSpacing, stepGame } from "/hockey.js";
 
 const svgNamespace = "http://www.w3.org/2000/svg";
 const rink = document.querySelector("#rink");
@@ -35,6 +35,7 @@ let intervalId;
 let eventCount = 0;
 let motion = { startedAt: performance.now(), duration: 850, fromPlayers: {}, toPlayers: {}, fromPuck: { x: 50, y: 30 }, events: [] };
 let renderedPositions = {};
+let renderedPuckPosition = { x: 47.5, y: 30 };
 
 function svgElement(name, attributes = {}) {
   const element = document.createElementNS(svgNamespace, name);
@@ -88,6 +89,8 @@ function describeEvent(event) {
     case "shot_missed": return { text: `${actorName} střílí mimo branku` };
     case "puck_stolen": return { text: `${actorName} získává puk` };
     case "puck_recovered": return { text: `${actorName} sbírá volný puk` };
+    case "faceoff_started": return { text: "Vhazování na středové čáře" };
+    case "faceoff_won": return { text: `Vhazování vyhráli ${teamNames[event.teamId]}` };
     case "period_ended": return { text: "Konec třetiny" };
     default: return null;
   }
@@ -121,6 +124,12 @@ function updateScoreboard() {
   document.querySelector("#playIcon").textContent = playing ? "Ⅱ" : "▶";
 
   const carrier = game.puck.carrierId ? game.players[game.puck.carrierId] : null;
+  if (game.faceoff) {
+    gameElements.possession.textContent = "Vhazování na středové čáře";
+    gameElements.homeCarrier.textContent = "Na vhazování";
+    gameElements.awayCarrier.textContent = "Na vhazování";
+    return;
+  }
   if (!carrier) {
     gameElements.possession.textContent = "Volný puk";
     gameElements.homeCarrier.textContent = "Bez puku";
@@ -173,14 +182,16 @@ function advanceGame() {
   stepGame(game);
   motion = {
     startedAt: performance.now(),
-    duration: 850 / speed,
-    fromPlayers: before.players,
+    duration: 1000 / speed,
+    fromPlayers: Object.keys(renderedPositions).length === Object.keys(before.players).length
+      ? structuredClone(renderedPositions)
+      : before.players,
     toPlayers: game.players,
-    fromPuck: { x: before.puck.x, y: before.puck.y },
+    fromPuck: structuredClone(renderedPuckPosition),
     events: game.events,
   };
   for (const event of game.events) {
-    drawAction(event, { x: before.puck.x, y: before.puck.y });
+    drawAction(event, motion.fromPuck);
     addFeedEvent(event);
   }
   updateScoreboard();
@@ -189,7 +200,7 @@ function advanceGame() {
 
 function renderFrame(now) {
   const progress = Math.min(1, (now - motion.startedAt) / motion.duration);
-  const eased = 1 - (1 - progress) ** 3;
+  const eased = progress;
   renderedPositions = {};
 
   for (const [id, player] of Object.entries(game.players)) {
@@ -198,7 +209,12 @@ function renderFrame(now) {
     const x = from.x + (to.x - from.x) * eased;
     const y = from.y + (to.y - from.y) * eased;
     renderedPositions[id] = { x, y };
-    playerNodes.get(id)?.setAttribute("transform", `translate(${rinkX(x)} ${rinkY(y)})`);
+  }
+
+  enforcePlayerSpacing(renderedPositions);
+  for (const [id, position] of Object.entries(renderedPositions)) {
+    const player = game.players[id];
+    playerNodes.get(id)?.setAttribute("transform", `translate(${rinkX(position.x)} ${rinkY(position.y)})`);
     playerNodes.get(id)?.classList.toggle("is-carrier", id === game.puck.carrierId);
   }
 
@@ -223,6 +239,7 @@ function renderFrame(now) {
     puckPosition = { x: from.x + (game.puck.x - from.x) * eased, y: from.y + (game.puck.y - from.y) * eased };
   }
 
+  renderedPuckPosition = puckPosition;
   puckLayer.setAttribute("transform", `translate(${rinkX(puckPosition.x)} ${rinkY(puckPosition.y)})`);
   window.requestAnimationFrame(renderFrame);
 }
@@ -230,7 +247,7 @@ function renderFrame(now) {
 function setPlaying(nextPlaying) {
   playing = nextPlaying && game.status === "running";
   window.clearInterval(intervalId);
-  if (playing) intervalId = window.setInterval(advanceGame, 850 / speed);
+  if (playing) intervalId = window.setInterval(advanceGame, 1000 / speed);
   updateScoreboard();
 }
 
@@ -252,6 +269,7 @@ function resetGame() {
     fromPlayers: structuredClone(game.players), toPlayers: game.players,
     fromPuck: { x: game.puck.x, y: game.puck.y }, events: [],
   };
+  renderedPuckPosition = { x: game.puck.x, y: game.puck.y };
   puckLayer.setAttribute("transform", `translate(${rinkX(game.puck.x)} ${rinkY(game.puck.y)})`);
   updateScoreboard();
   setPlaying(true);

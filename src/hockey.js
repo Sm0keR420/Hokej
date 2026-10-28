@@ -10,7 +10,7 @@ export const ROLES = Object.freeze([
 ]);
 
 export const ROLE_ACTIONS = Object.freeze({
-  center: ["hold", "move", "pass", "shoot", "check", "forecheck"],
+  center: ["hold", "move", "pass", "shoot", "check", "forecheck", "faceoff"],
   leftWing: ["hold", "move", "pass", "shoot", "check", "forecheck"],
   rightWing: ["hold", "move", "pass", "shoot", "check", "forecheck"],
   leftDefense: ["hold", "move", "pass", "shoot", "check", "poke", "forecheck"],
@@ -22,6 +22,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const isDefense = (role) => role === "leftDefense" || role === "rightDefense";
 const isForward = (role) => role === "center" || role === "leftWing" || role === "rightWing";
+const MIN_PLAYER_DISTANCE = 4.2;
 
 function makeTeam(id, attackDirection) {
   const positions = formationPositions(attackDirection);
@@ -49,7 +50,7 @@ function formationPositions(attackDirection) {
   const forwardX = 50 - attackDirection * 5;
   const defenseX = 50 - attackDirection * 12;
   return {
-    center: [50, 30],
+    center: [50 - attackDirection * 2.5, 30],
     leftWing: [forwardX, 22],
     rightWing: [forwardX, 38],
     leftDefense: [defenseX, 25],
@@ -92,12 +93,15 @@ function resetAfterGoal(state, scoringTeam) {
     }
   }
 
-  const center = state.players[scoringTeam.playerIds.find((id) => state.players[id].role === "center")];
-  state.puck.carrierId = center.id;
-  state.puck.x = center.x;
-  state.puck.y = center.y;
+  state.faceoff = {
+    centerIds: state.teams.map((team) => team.playerIds.find((id) => state.players[id].role === "center")),
+  };
+  state.puck.carrierId = null;
+  state.puck.x = 50;
+  state.puck.y = 30;
   state.puck.vx = 0;
   state.puck.vy = 0;
+  recordEvent(state, "faceoff_started", { teamId: scoringTeam.id, x: 50, y: 30 });
 }
 
 export function createGame({ seed = 1, periodLength = 1200 } = {}) {
@@ -117,6 +121,7 @@ export function createGame({ seed = 1, periodLength = 1200 } = {}) {
     seed: seed >>> 0,
     teams: [home.team, away.team],
     players,
+    faceoff: null,
     puck: { carrierId: "home-center", x: 50, y: 30, vx: 0, vy: 0 },
     events: [],
     eventLog: [],
@@ -138,6 +143,44 @@ function movePlayer(player, targetX, targetY, maxDistance = 4) {
   const scale = length > maxDistance ? maxDistance / length : 1;
   player.x = clamp(player.x + dx * scale, 0, RINK.width);
   player.y = clamp(player.y + dy * scale, 0, RINK.height);
+}
+
+export function enforcePlayerSpacing(players) {
+  const skaters = Object.values(players);
+  for (let iteration = 0; iteration < 24; iteration += 1) {
+    let adjusted = false;
+    for (let firstIndex = 0; firstIndex < skaters.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < skaters.length; secondIndex += 1) {
+        const first = skaters[firstIndex];
+        const second = skaters[secondIndex];
+        const dx = first.x - second.x;
+        const dy = first.y - second.y;
+        const gap = Math.hypot(dx, dy);
+        if (gap >= MIN_PLAYER_DISTANCE) continue;
+
+        const angle = gap > 1e-9
+          ? Math.atan2(dy, dx)
+          : (firstIndex * skaters.length + secondIndex + 1) * 2.399963229728653;
+        const directionX = gap > 1e-9 ? dx / gap : Math.cos(angle);
+        const directionY = gap > 1e-9 ? dy / gap : Math.sin(angle);
+        const overlap = MIN_PLAYER_DISTANCE - gap;
+        let firstShare = first.role === "goalie" ? 0 : 0.5;
+        let secondShare = second.role === "goalie" ? 0 : 0.5;
+        if (firstShare + secondShare === 0) firstShare = secondShare = 0.5;
+        const shareTotal = firstShare + secondShare;
+        firstShare /= shareTotal;
+        secondShare /= shareTotal;
+
+        first.x = clamp(first.x + directionX * overlap * firstShare, 0, RINK.width);
+        first.y = clamp(first.y + directionY * overlap * firstShare, 0, RINK.height);
+        second.x = clamp(second.x - directionX * overlap * secondShare, 0, RINK.width);
+        second.y = clamp(second.y - directionY * overlap * secondShare, 0, RINK.height);
+        adjusted = true;
+      }
+    }
+    if (!adjusted) break;
+  }
+  return players;
 }
 
 function bestPassingOption(state, player, team) {
@@ -172,6 +215,8 @@ function distanceToSegment(point, start, end) {
 export function decideAction(state, player) {
   const team = teamFor(state, player.teamId);
   const ownGoalX = team.attackDirection === 1 ? 4 : RINK.width - 4;
+
+  if (state.faceoff?.centerIds.includes(player.id)) return { type: "faceoff" };
 
   if (player.role === "goalie") {
     if (state.puck.carrierId === player.id) {
@@ -345,6 +390,7 @@ function actOnPuck(state, player, action) {
 export function stepGame(state, { agents = {} } = {}) {
   if (state.status !== "running") return state;
   state.events = [];
+  const isFaceoffStep = Boolean(state.faceoff);
 
   const snapshot = structuredClone(state);
   const actions = {};
@@ -370,6 +416,11 @@ export function stepGame(state, { agents = {} } = {}) {
   const carrier = state.puck.carrierId ? state.players[state.puck.carrierId] : null;
   if (carrier) {
     actOnPuck(state, carrier, actions[carrier.id]);
+  } else if (isFaceoffStep) {
+    state.puck.x = 50;
+    state.puck.y = 30;
+    state.puck.vx = 0;
+    state.puck.vy = 0;
   } else {
     state.puck.x = clamp(state.puck.x + state.puck.vx, 0, RINK.width);
     state.puck.y = clamp(state.puck.y + state.puck.vy, 0, RINK.height);
@@ -395,6 +446,17 @@ export function stepGame(state, { agents = {} } = {}) {
       actOnPuck(state, player, action);
     }
   }
+
+  enforcePlayerSpacing(state.players);
+  if (isFaceoffStep) {
+    const [firstCenterId, secondCenterId] = state.faceoff.centerIds;
+    const centers = [state.players[firstCenterId], state.players[secondCenterId]];
+    const winner = centers[nextRandom(state) < 0.5 ? 0 : 1];
+    state.puck.carrierId = winner.id;
+    state.faceoff = null;
+    recordEvent(state, "faceoff_won", { teamId: winner.teamId, playerId: winner.id });
+  }
+
 
   if (state.puck.carrierId) {
     const currentCarrier = state.players[state.puck.carrierId];

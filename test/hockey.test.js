@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createGame, decideAction, ROLE_ACTIONS, simulateGame, stepGame } from "../src/hockey.js";
+import { createGame, decideAction, enforcePlayerSpacing, ROLE_ACTIONS, simulateGame, stepGame } from "../src/hockey.js";
+
+function assertPlayersAreSeparated(players) {
+  const skaters = Object.values(players);
+  for (let first = 0; first < skaters.length; first += 1) {
+    for (let second = first + 1; second < skaters.length; second += 1) {
+      const gap = Math.hypot(skaters[first].x - skaters[second].x, skaters[first].y - skaters[second].y);
+      assert.ok(gap >= 4.19, `${skaters[first].id} overlaps ${skaters[second].id}: ${gap}`);
+    }
+  }
+}
 
 test("starts with two complete 5+1 lineups", () => {
   const game = createGame();
@@ -17,6 +27,28 @@ test("rule-based agents choose actions allowed by each role", () => {
     const action = decideAction(game, player);
     assert.ok(ROLE_ACTIONS[player.role].includes(action.type));
   }
+});
+
+test("player positions stay separated through gameplay", () => {
+  const game = createGame({ seed: 33 });
+  assertPlayersAreSeparated(game.players);
+
+  for (let tick = 0; tick < 100; tick += 1) {
+    stepGame(game);
+    assertPlayersAreSeparated(game.players);
+  }
+});
+
+test("spacing resolution separates overlapping player positions", () => {
+  const game = createGame();
+  for (const player of Object.values(game.players)) {
+    player.x = 50;
+    player.y = 30;
+  }
+
+  enforcePlayerSpacing(game.players);
+
+  assertPlayersAreSeparated(game.players);
 });
 
 test("only one forward forechecks while teammates hold their lanes", () => {
@@ -47,9 +79,9 @@ test("players support a loose puck without collapsing into a group", () => {
 
 test("a nearby forechecker can take the puck from the carrier", () => {
   const game = createGame({ seed: 1 });
-  game.players["away-center"].x = 52;
+  game.players["away-center"].x = 50.5;
   game.puck.carrierId = "away-center";
-  game.puck.x = 52;
+  game.puck.x = 50.5;
 
   stepGame(game);
 
@@ -77,7 +109,7 @@ test("custom agents can complete a pass", () => {
   assert.ok(game.events.some((event) => event.type === "pass_completed"));
 });
 
-test("a goal resets both teams and gives the puck to the scoring team", () => {
+test("a goal resets both teams and starts a center-ice faceoff", () => {
   const game = createGame({ seed: 1, periodLength: 10 });
   const startPositions = Object.fromEntries(
     Object.entries(game.players).map(([id, player]) => [id, { x: player.x, y: player.y }]),
@@ -92,11 +124,19 @@ test("a goal resets both teams and gives the puck to the scoring team", () => {
   stepGame(game, { agents });
 
   assert.ok(game.events.some((event) => event.type === "goal" && event.teamId === "home"));
-  assert.equal(game.puck.carrierId, "home-center");
+  assert.equal(game.puck.carrierId, null);
+  assert.deepEqual(game.faceoff.centerIds, ["home-center", "away-center"]);
+  assert.deepEqual({ x: game.puck.x, y: game.puck.y }, { x: 50, y: 30 });
   assert.deepEqual(
     Object.fromEntries(Object.entries(game.players).map(([id, player]) => [id, { x: player.x, y: player.y }])),
     startPositions,
   );
+
+  stepGame(game, { agents });
+
+  assert.equal(game.faceoff, null);
+  assert.ok(["home-center", "away-center"].includes(game.puck.carrierId));
+  assert.ok(game.events.some((event) => event.type === "faceoff_won"));
 });
 
 test("goalie passes the puck after a save", () => {
